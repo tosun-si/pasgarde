@@ -1,0 +1,15 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+apache-beam = { version = "==2.34.0", extras = ["google"] }
+
+[dev-packages]
+flake8 = "==3.8.4"
+pytest = "==6.1.2"
+toolz = "==0.11.2"
+
+[requires]
+python_version = "3.8"

@@ -1,0 +1,16 @@
+.idea
+target
+*.iml
+**/avro/generated
+venv
+.envrc
+.vscode
+.DS_Store
+*.egg-info
+*.pytest_cache
+pytestdebug.log
+
+# Terraform
+**/.terraform/
+**/*.tfstate*
+**/tfplan.out

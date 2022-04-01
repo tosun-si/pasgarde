@@ -1,2 +1,3 @@
-# thore
-Error handling with Apache Beam Python
+# Asgarde
+
+This module allows simplifying error handling with Apache Beam Python.

@@ -1,0 +1,30 @@
+name: Publish project to PyPi
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    environment: asgarde_ci_cd
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.8.12"
+
+      - name: Install Twine
+        run: |
+          pip install twine
+
+      - name: Build dist
+        run: |
+          python setup.py sdist bdist_wheel
+
+      - name: Publish library to PyPi
+        run: |
+          TWINE_PASSWORD=${PYPI_PASSWORD} TWINE_USERNAME=${PYPI_USERNAME} python -m twine upload --repository-url https://test.pypi.org/legacy/ dist/*
