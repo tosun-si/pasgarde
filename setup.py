@@ -9,7 +9,7 @@ README = (HOME_DIR / "README.md").read_text()
 
 setuptools.setup(
     name="asgarde",
-    version="0.13.0",
+    version="0.16.0",
     description="Allows simplifying error handling with Apache Beam",
     long_description=README,
     long_description_content_type="text/markdown",

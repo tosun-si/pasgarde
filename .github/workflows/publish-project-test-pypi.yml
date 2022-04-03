@@ -1,0 +1,34 @@
+name: Publish project to TestPyPi
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    environment: asgarde_ci_cd
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.8.12"
+
+      - name: Install packages
+        run: |
+          pip install wheel
+          pip install twine
+
+      - name: Build dist
+        run: |
+          python setup.py sdist bdist_wheel
+
+      - name: Publish library to Test PyPi
+        run: |
+          python -m twine upload --verbose --repository-url https://test.pypi.org/legacy/ dist/*
+        env:
+          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}

@@ -4,12 +4,22 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-apache-beam = { version = "==2.34.0", extras = ["google"] }
+apache-beam = { version = "==2.39.0", extras = ["gcp"] }
 
 [dev-packages]
 flake8 = "==3.8.4"
 pytest = "==6.1.2"
 toolz = "==0.11.2"
+coverage = "==6.4.1"
+pylint = "==2.14.3"
+pylint-exit = "==1.2.0"
 
 [requires]
 python_version = "3.8"
+
+[scripts]
+test = "pytest"
+coveragetest = "coverage run -m pytest"
+coverage = "coverage"
+lint = "pylint"
+lintexit = "pylint-exit"

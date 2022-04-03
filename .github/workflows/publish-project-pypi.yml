@@ -17,8 +17,9 @@ jobs:
         with:
           python-version: "3.8.12"
 
-      - name: Install Twine
+      - name: Install packages
         run: |
+          pip install wheel
           pip install twine
 
       - name: Build dist
@@ -27,4 +28,7 @@ jobs:
 
       - name: Publish library to PyPi
         run: |
-          TWINE_PASSWORD=${PYPI_PASSWORD} TWINE_USERNAME=${PYPI_USERNAME} python -m twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+          python -m twine upload --verbose dist/*
+        env:
+          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}

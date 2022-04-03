@@ -1,5 +1,5 @@
 import json
-from typing import Iterable
+from typing import Iterable, Callable, Any
 
 import apache_beam as beam
 from apache_beam import pvalue
@@ -10,29 +10,57 @@ FAILURES = 'failures'
 
 """
 This file contains DoFn classes representing functions like map, flatMap and filter but with error handling.
-Errors are caught in a catch bloc and a failure object are put in a side output.
-The failure contains the current input element and stackTrace.
+Errors are caught in a except bloc and a failure object are put in a side output.
+The failure contains the current input element and exception.
 """
 
 
 def get_input_element(element) -> str:
-    if isinstance(element, dict):
-        return json.dumps(element)
-    else:
-        return str(element)
+    """
+    Get the input element for the Failure object.
+    For a dict a json string is returned
+
+    For other object, the string representation of the object is returned.
+    """
+    return json.dumps(element) if isinstance(element, dict) else str(element)
 
 
 class FlatMap(beam.DoFn):
+    """
+    Custom DnFn class representing a flatMap operation with error handling.
+    """
 
-    def __init__(self, step: str, fn):
+    def __init__(self,
+                 step: str,
+                 input_element_mapper: Callable[[Any], Any],
+                 setup_action: Callable[[], None] = lambda: None,
+                 start_bundle_action: Callable[[], None] = lambda: None,
+                 finish_bundle_action: Callable[[], None] = lambda: None,
+                 teardown_action: Callable[[], None] = lambda: None):
         self.step = step
-        self.fn = fn
+        self.input_element_mapper = input_element_mapper
+        self.setup_action = setup_action
+        self.start_bundle_action = start_bundle_action
+        self.finish_bundle_action = finish_bundle_action
+        self.teardown_action = teardown_action
 
-        super(FlatMap, self).__init__()
+        super().__init__()
+
+    def setup(self):
+        self.setup_action()
+
+    def start_bundle(self):
+        self.start_bundle_action()
+
+    def finish_bundle(self):
+        self.finish_bundle_action()
+
+    def teardown(self):
+        self.teardown_action()
 
     def process(self, element, *args, **kwargs):
         try:
-            results: Iterable = self.fn(element, *args, **kwargs)
+            results: Iterable = self.input_element_mapper(element, *args, **kwargs)
 
             for result in results:
                 yield result
@@ -47,16 +75,41 @@ class FlatMap(beam.DoFn):
 
 
 class Map(beam.DoFn):
+    """
+    Custom DnFn class representing a map operation with error handling.
+    """
 
-    def __init__(self, step: str, fn):
+    def __init__(self,
+                 step: str,
+                 input_element_mapper: Callable[[Any], Any],
+                 setup_action: Callable[[], None] = lambda: None,
+                 start_bundle_action: Callable[[], None] = lambda: None,
+                 finish_bundle_action: Callable[[], None] = lambda: None,
+                 teardown_action: Callable[[], None] = lambda: None):
         self.step = step
-        self.fn = fn
+        self.input_element_mapper = input_element_mapper
+        self.setup_action = setup_action
+        self.start_bundle_action = start_bundle_action
+        self.finish_bundle_action = finish_bundle_action
+        self.teardown_action = teardown_action
 
-        super(Map, self).__init__()
+        super().__init__()
+
+    def setup(self):
+        self.setup_action()
+
+    def start_bundle(self):
+        self.start_bundle_action()
+
+    def finish_bundle(self):
+        self.finish_bundle_action()
+
+    def teardown(self):
+        self.teardown_action()
 
     def process(self, element, *args, **kwargs):
         try:
-            yield self.fn(element, *args, **kwargs)
+            yield self.input_element_mapper(element, *args, **kwargs)
         except Exception as err:
             failure = Failure(
                 pipeline_step=self.step,
@@ -68,16 +121,21 @@ class Map(beam.DoFn):
 
 
 class Filter(beam.DoFn):
+    """
+    Custom DnFn class representing a filter operation with error handling.
+    """
 
-    def __init__(self, step: str, predicate):
+    def __init__(self,
+                 step: str,
+                 input_element_predicate: Callable[[Any], bool]):
         self.step = step
-        self.predicate = predicate
+        self.input_element_predicate = input_element_predicate
 
-        super(Filter, self).__init__()
+        super().__init__()
 
     def process(self, element, *args, **kwargs):
         try:
-            if self.predicate(element, *args, **kwargs):
+            if self.input_element_predicate(element, *args, **kwargs):
                 yield element
         except Exception as err:
             failure = Failure(

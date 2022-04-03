@@ -36,4 +36,11 @@ jobs:
           pipenv install --deploy --dev
       - name: Run test suite
         run: |
-          pipenv run test -v
+          pipenv run coveragetest -v
+      - name: Run coverage report
+        run: |
+          pipenv run coverage report --omit="*/tests*"
+      - name: Run pylint code quality check
+        run: |
+          ./.github/scripts/execute_pylint_quality_check.sh
+        shell: bash
