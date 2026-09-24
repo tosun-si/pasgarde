@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import pickle
 import traceback
@@ -12,11 +13,20 @@ class Failure:
 
     Build it with `Failure.from_exception` in custom DoFn classes: the exception is always picklable and the
     stack trace is kept as a string (a pickled exception loses its traceback).
+
+    `origin_element` is the element that entered the flow, when the origin is tracked with
+    `CollectionComposer.with_origin_element`, `None` otherwise.
     """
     pipeline_step: str
     input_element: str
     exception: Exception
     stack_trace: str = ''
+    # Default value also used when unpickling a failure of a previous version, without this field.
+    origin_element: str | None = None
+
+    def with_origin_element(self, origin_element: str) -> 'Failure':
+        """Returns a copy of this failure with the given origin element."""
+        return dataclasses.replace(self, origin_element=origin_element)
 
     @classmethod
     def from_exception(cls, pipeline_step: str, element: Any, exception: Exception) -> 'Failure':
