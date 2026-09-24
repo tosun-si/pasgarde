@@ -52,6 +52,9 @@ uv add asgarde      # or: pip install asgarde
 - **[`map`, `flat_map` and `filter` operators](https://tosun-si.github.io/asgarde/python/operators/)** with
   [side inputs and DoFn lifecycle actions](https://tosun-si.github.io/asgarde/python/side-inputs-lifecycle/), and
   `Failure.from_exception` for [your own DoFn](https://tosun-si.github.io/asgarde/python/custom-dofn/).
+- **[Origin element](https://tosun-si.github.io/asgarde/concepts/origin-element/)**: with `with_origin_element`,
+  the failures also give the element that entered the flow, to debug and replay from the start. Evaluated only when
+  a failure occurs.
 - **[Never breaks your job](https://tosun-si.github.io/asgarde/concepts/guarantees/)**: non picklable exceptions,
   non JSON dicts, partial `flat_map` outputs, deterministic labels for Dataflow updates.
 - **[Failure metrics](https://tosun-si.github.io/asgarde/concepts/metrics/)**: a Beam counter per step.
@@ -64,8 +67,7 @@ every push and every week. See [Compatibility](https://tosun-si.github.io/asgard
 
 ## Roadmap
 
-See the [roadmap](https://tosun-si.github.io/asgarde/project/roadmap/): origin element in the failures, replayable
-input element, Beam schema for the failures, ready-to-use failure sinks...
+See the [roadmap](https://tosun-si.github.io/asgarde/project/roadmap/): replayable input element, Beam schema for the failures, ready-to-use failure sinks...
 
 ## Contributing
 
