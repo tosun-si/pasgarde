@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
 
@@ -87,7 +87,7 @@ jobs:
           fetch-depth: 0  # hatch-vcs computes the version from the git tags
 
       - name: Set up uv and Python ${{ matrix.python }}
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           python-version: ${{ matrix.python }}
           enable-cache: true
@@ -122,7 +122,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
 

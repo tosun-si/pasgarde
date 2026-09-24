@@ -18,7 +18,7 @@ jobs:
           fetch-depth: 0  # hatch-vcs computes the version from the git tag
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
 
