@@ -57,6 +57,12 @@ uv add asgarde      # or: pip install asgarde
   a failure occurs.
 - **[Never breaks your job](https://tosun-si.github.io/asgarde/concepts/guarantees/)**: non picklable exceptions,
   non JSON dicts, partial `flat_map` outputs, deterministic labels for Dataflow updates.
+- **Any Beam transform**: `apply(name, beam.Map(...))` or a custom `DoFn`, with the Beam native exception handling,
+  its errors gathered with the other failures.
+- **[Write the failures](https://tosun-si.github.io/asgarde/concepts/write-failures/)** to BigQuery with
+  `Failure.to_dict()` and `FAILURE_BIGQUERY_SCHEMA` (exception type, message, stack trace, timestamp...).
+- **[Beam native error handling](https://tosun-si.github.io/asgarde/concepts/beam-error-handling/)**: the failures
+  can be added to a Beam `ErrorHandler` with `Failure.to_bad_record`, for a single dead letter queue.
 - **[Failure metrics](https://tosun-si.github.io/asgarde/concepts/metrics/)**: a Beam counter per step.
 - **Typed** (`py.typed`).
 
@@ -67,9 +73,7 @@ every push and every week. See [Compatibility](https://tosun-si.github.io/asgard
 
 ## Roadmap
 
-See the [roadmap](https://tosun-si.github.io/asgarde/project/roadmap/). Next, the 1.3.0 without breaking change: a
-richer `Failure` (exception type, message, timestamp), `to_dict` with a BigQuery schema, any Beam transform in the
-composer and the integration with the Beam native error handling (`ErrorHandler`).
+See the [roadmap](https://tosun-si.github.io/asgarde/project/roadmap/).
 
 ## Contributing
 

@@ -3,7 +3,22 @@ import json
 import pickle
 import traceback
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
+
+# BigQuery table schema of the failures converted with `Failure.to_dict`, same fields as the Java
+# `FailureTransforms.SCHEMA` (snake_case instead of camelCase).
+FAILURE_BIGQUERY_SCHEMA = {
+    'fields': [
+        {'name': 'pipeline_step', 'type': 'STRING', 'mode': 'NULLABLE'},
+        {'name': 'input_element', 'type': 'STRING', 'mode': 'REQUIRED'},
+        {'name': 'origin_element', 'type': 'STRING', 'mode': 'NULLABLE'},
+        {'name': 'exception_type', 'type': 'STRING', 'mode': 'REQUIRED'},
+        {'name': 'exception_message', 'type': 'STRING', 'mode': 'NULLABLE'},
+        {'name': 'stack_trace', 'type': 'STRING', 'mode': 'REQUIRED'},
+        {'name': 'timestamp', 'type': 'TIMESTAMP', 'mode': 'NULLABLE'},
+    ]
+}
 
 
 @dataclass
@@ -21,8 +36,48 @@ class Failure:
     input_element: str
     exception: Exception
     stack_trace: str = ''
-    # Default value also used when unpickling a failure of a previous version, without this field.
+    # Default values also used when unpickling a failure of a previous version, without these fields.
     origin_element: str | None = None
+    timestamp: datetime | None = None
+
+    @property
+    def exception_type(self) -> str:
+        """Qualified name of the exception type, the original one for a `SerializableException`."""
+        if isinstance(self.exception, SerializableException):
+            return self.exception.original_type
+
+        return qualified_name(type(self.exception))
+
+    @property
+    def exception_message(self) -> str | None:
+        """Message of the exception, `None` if the exception has no message."""
+        return str(self.exception) or None
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Flat and JSON serializable form of the failure, e.g. for `WriteToBigQuery` with `FAILURE_BIGQUERY_SCHEMA`.
+        """
+        return {
+            'pipeline_step': self.pipeline_step,
+            'input_element': self.input_element,
+            'origin_element': self.origin_element,
+            'exception_type': self.exception_type,
+            'exception_message': self.exception_message,
+            'stack_trace': self.stack_trace,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
+        }
+
+    def to_bad_record(self) -> tuple[Any, tuple[type, str, list[str]]]:
+        """
+        The failure in the dead letter format of the Beam `with_exception_handling`:
+        `(element, (exception type, exception repr, stack trace lines))`, to add the failures to a Beam `ErrorHandler`
+        with the bad records of the Beam transforms.
+
+        The element is the origin element when it's tracked (to replay from the start), the input element otherwise.
+        """
+        element = self.origin_element if self.origin_element is not None else self.input_element
+
+        return element, (type(self.exception), repr(self.exception), self.stack_trace.splitlines(keepends=True))
 
     def with_origin_element(self, origin_element: str) -> 'Failure':
         """Returns a copy of this failure with the given origin element."""
@@ -38,7 +93,8 @@ class Failure:
             pipeline_step=pipeline_step,
             input_element=element_as_string(element),
             exception=SerializableException.of(exception),
-            stack_trace=''.join(traceback.format_exception(type(exception), exception, exception.__traceback__))
+            stack_trace=''.join(traceback.format_exception(type(exception), exception, exception.__traceback__)),
+            timestamp=datetime.now(timezone.utc)
         )
 
 
@@ -68,8 +124,15 @@ class SerializableException(Exception):
             pickle.loads(pickle.dumps(exception))
             return exception
         except Exception:
-            exception_type = type(exception)
-            return SerializableException(f'{exception_type.__module__}.{exception_type.__qualname__}', str(exception))
+            return SerializableException(qualified_name(type(exception)), str(exception))
+
+
+def qualified_name(exception_type: type) -> str:
+    """Qualified name of a type, without the `builtins` module of the built-in exceptions."""
+    if exception_type.__module__ == 'builtins':
+        return exception_type.__qualname__
+
+    return f'{exception_type.__module__}.{exception_type.__qualname__}'
 
 
 def element_as_string(element: Any) -> str:

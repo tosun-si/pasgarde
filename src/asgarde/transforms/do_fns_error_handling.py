@@ -4,13 +4,14 @@ Errors are caught in an except block and a failure object is put in a side outpu
 The failure contains the current input element, the exception and its stack trace.
 """
 from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import Any
 
 import apache_beam as beam
 from apache_beam import pvalue
 from apache_beam.metrics import Metrics
 
-from asgarde.failure import Failure
+from asgarde.failure import Failure, SerializableException, element_as_string, qualified_name
 
 FAILURES = 'failures'
 
@@ -30,6 +31,30 @@ def origin_as_string(origin_to_string: Callable[[Any], Any], origin: Any) -> str
         return str(origin_to_string(origin))
     except Exception as err:
         return f'<conversion of the origin element failed: {err!r}>'
+
+
+def dead_letter_to_failure(dead_letter: tuple[Any, tuple[type, str, list[str]]], pipeline_step: str) -> Failure:
+    """
+    Converts a dead letter of the Beam `with_exception_handling`, `(element, (exception type, exception repr, stack
+    trace lines))`, to a `Failure`, and increments the failure counter of the step.
+
+    Beam only gives the representation of the exception: the exception is a `SerializableException` with the
+    original type and the message of the last line of the stack trace.
+    """
+    element, (exception_type, exception_repr, stack_trace_lines) = dead_letter
+    type_name = qualified_name(exception_type)
+    last_line = stack_trace_lines[-1].strip() if stack_trace_lines else ''
+    message = last_line.split(': ', 1)[1] if ': ' in last_line else exception_repr
+
+    Metrics.counter(FAILURES_METRICS_NAMESPACE, pipeline_step).inc()
+
+    return Failure(
+        pipeline_step=pipeline_step,
+        input_element=element_as_string(element),
+        exception=SerializableException(type_name, message),
+        stack_trace=''.join(stack_trace_lines),
+        timestamp=datetime.now(timezone.utc)
+    )
 
 
 class ErrorHandlingDoFn(beam.DoFn):
