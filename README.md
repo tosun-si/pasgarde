@@ -67,7 +67,9 @@ every push and every week. See [Compatibility](https://tosun-si.github.io/asgard
 
 ## Roadmap
 
-See the [roadmap](https://tosun-si.github.io/asgarde/project/roadmap/): replayable input element, Beam schema for the failures, ready-to-use failure sinks...
+See the [roadmap](https://tosun-si.github.io/asgarde/project/roadmap/). Next, the 1.3.0 without breaking change: a
+richer `Failure` (exception type, message, timestamp), `to_dict` with a BigQuery schema, any Beam transform in the
+composer and the integration with the Beam native error handling (`ErrorHandler`).
 
 ## Contributing
 
