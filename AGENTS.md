@@ -22,6 +22,7 @@
 
 - **Beam decoupling (since 1.0.0)**: `apache-beam>=X` is a floor, never a pin. Never raise it just because Beam released — CI tests the latest Beam (push + weekly cron, opens an issue on regression). Release only when a Beam release forces a code change.
 - **Parity with the Java lib**: same concepts, failure guarantees, metrics namespace (`asgarde-failures`) and roadmap; a change in one should be considered for the other.
+- **Documentation site** lives in the Java repo (github.com/tosun-si/asgarde, `docs/`, https://tosun-si.github.io/asgarde/) and covers both libs: a Python API change needs a docs PR there.
 - **Public API is the product**: `CollectionComposer`, `Failure`, the DoFn classes — keep changes backward compatible outside a major version.
 <!-- agents-md-manager:end -->
 

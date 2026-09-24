@@ -8,10 +8,13 @@
 [![Apache Beam](https://img.shields.io/badge/Apache%20Beam-%E2%89%A5%202.60.0-E25A1C?logo=apache&logoColor=white)](https://beam.apache.org/)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Docs](https://img.shields.io/badge/docs-tosun--si.github.io%2Fasgarde-E25A1C?logo=astro&logoColor=white)](https://tosun-si.github.io/asgarde/)
 [![License: MIT](https://img.shields.io/github/license/tosun-si/pasgarde)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/tosun-si/pasgarde?style=social)](https://github.com/tosun-si/pasgarde)
 
 This module allows simplifying error handling with Apache Beam Python.
+
+📖 **Documentation (Java, Kotlin and Python): https://tosun-si.github.io/asgarde/**
 
 > Asgarde also exists for **Apache Beam Java and Kotlin**: [asgarde](https://github.com/tosun-si/asgarde)
 > (Maven Central `fr.groupbees:asgarde`).
@@ -366,7 +369,6 @@ Ideas for the next versions, feedback and contributions are welcome (see [Contri
   failures from the dead letter queue and avoid leaking sensitive data.
 - **Beam schema for `Failure`**: write the failures directly to BigQuery.
 - **Ready-to-use failure sinks**: BigQuery, GCS, Pub/Sub.
-- **Documentation site** covering the Java and Python versions.
 
 ## Contributing
 
