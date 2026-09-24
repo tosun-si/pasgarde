@@ -1,0 +1,71 @@
+[project]
+name = "asgarde"
+dynamic = ["version"]
+description = "Error handling and dead letter queues for Apache Beam Python pipelines"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Mazlum Tosun", email = "mazlum.tosun@gmail.com" }]
+requires-python = ">=3.10"
+# Beam is a floor, not a pin: the pipeline brings its own Beam version. The CI tests this minimum version
+# and the latest Beam release (see .github/workflows/ci.yml).
+dependencies = ["apache-beam>=2.60.0"]
+keywords = ["apache-beam", "beam", "dataflow", "error-handling", "dead-letter-queue"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/tosun-si/pasgarde"
+Repository = "https://github.com/tosun-si/pasgarde"
+Issues = "https://github.com/tosun-si/pasgarde/issues"
+"Java version" = "https://github.com/tosun-si/asgarde"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "ruff>=0.6",
+    "toolz>=0.12",
+]
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+# The version is the git tag (vX.Y.Z): no version file to bump.
+source = "vcs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/asgarde"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["asgarde"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Given/When/Then test names are long by convention.
+"tests/*" = ["E501"]

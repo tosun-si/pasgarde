@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  # Feature branches are tested through their pull request, not on push (avoids duplicate runs).
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  # Weekly Beam compatibility check: runs the tests against the latest Beam release without releasing Asgarde.
+  # Opens an issue if a new Beam version breaks Asgarde.
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      beam-version:
+        description: 'Beam version to test against (empty = latest release on PyPI)'
+        required: false
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Run ruff
+        run: uvx ruff check --output-format=github src tests
+
+  resolve-beam-versions:
+    name: Resolve Beam versions
+    runs-on: ubuntu-latest
+    outputs:
+      minimum: ${{ steps.resolve.outputs.minimum }}
+      latest: ${{ steps.resolve.outputs.latest }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Resolve minimum (pyproject) and latest (PyPI) Beam versions
+        id: resolve
+        env:
+          INPUT_BEAM_VERSION: ${{ inputs.beam-version }}
+        run: |
+          MINIMUM=$(grep -oP '"apache-beam>=\K[0-9.]+' pyproject.toml)
+          LATEST="${INPUT_BEAM_VERSION:-$(curl -fsSL https://pypi.org/pypi/apache-beam/json | jq -r .info.version)}"
+          echo "Minimum Beam version: $MINIMUM, latest Beam version: $LATEST"
+          echo "minimum=$MINIMUM" >> "$GITHUB_OUTPUT"
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Test (Python ${{ matrix.python }}, Beam ${{ matrix.beam-label }})
+    needs: resolve-beam-versions
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Minimum supported Beam version on the lowest supported Python.
+          - python: '3.10'
+            beam-label: minimum
+          - python: '3.12'
+            beam-label: latest
+            coverage: true
+          - python: '3.13'
+            beam-label: latest
+          - python: '3.14'
+            beam-label: latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # hatch-vcs computes the version from the git tags
+
+      - name: Set up uv and Python ${{ matrix.python }}
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-python: true
+
+      - name: Install dependencies with Beam ${{ matrix.beam-label }}
+        env:
+          BEAM_VERSION: ${{ matrix.beam-label == 'minimum' && needs.resolve-beam-versions.outputs.minimum || needs.resolve-beam-versions.outputs.latest }}
+        run: |
+          uv sync --locked
+          uv pip install "apache-beam==${BEAM_VERSION}"
+          uv run --no-sync python -c "import apache_beam; print('Beam', apache_beam.__version__)"
+
+      - name: Run tests
+        run: uv run --no-sync pytest -v --cov --cov-report=term --cov-report=xml
+
+      - name: Upload coverage report
+        if: always() && matrix.coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 30
+
+  build:
+    name: Build package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Check the package metadata
+        run: uvx twine check --strict dist/*
+
+  report-beam-regression:
+    name: Report Beam regression
+    needs: [ resolve-beam-versions, test ]
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the Beam compatibility issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          BEAM_VERSION: ${{ needs.resolve-beam-versions.outputs.latest }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TITLE="Beam compatibility: tests fail with Beam $BEAM_VERSION"
+          BODY="The weekly compatibility run failed against Beam \`$BEAM_VERSION\`: $RUN_URL"
+          EXISTING=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --body "$BODY"
+          fi

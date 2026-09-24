@@ -1,19 +1,18 @@
 from dataclasses import dataclass
-from typing import Dict
 
 import apache_beam as beam
 import pytest
-from apache_beam import PCollection, DoFn, pvalue, ParDo
+from apache_beam import DoFn, ParDo, PCollection, pvalue
 from apache_beam.pvalue import AsDict
 from apache_beam.testing.test_pipeline import TestPipeline
 from apache_beam.testing.util import assert_that, equal_to, is_empty
-from toolz.curried import pipe, map
+from toolz.curried import map, pipe
 
 from asgarde.collection_composer import CollectionComposer
 from asgarde.failure import Failure
-from asgarde.tests.player import Player
-from asgarde.tests.team import Team
-from asgarde.tests.testing_helper import log_element
+from tests.player import Player
+from tests.team import Team
+from tests.testing_helper import log_element
 
 FAILURES = 'failures'
 
@@ -537,7 +536,7 @@ class TestCollectionComposer:
               team_countries=AsDict(countries_side_inputs))
          )
 
-    def to_team_with_city(self, team_name: str, team_countries: Dict[str, str]) -> TeamInfo:
+    def to_team_with_city(self, team_name: str, team_countries: dict[str, str]) -> TeamInfo:
         return TeamInfo(name=team_name, country=team_countries[team_name], city='')
 
     def to_element_with_simulation_error_1(self, elem):
@@ -573,7 +572,7 @@ class TestCollectionComposer:
 
         result_input_equals_expected: bool = result_input_element == expected_input_element
         result_exception_equals_expected: bool = result_exception.args == expected_exception.args
-        expected_exception_is_value_error: bool = type(expected_exception) == ValueError
+        expected_exception_is_value_error: bool = type(expected_exception) is ValueError
 
         return (result_input_equals_expected
                 and result_exception_equals_expected

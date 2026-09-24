@@ -1,17 +1,19 @@
 .idea
-target
-*.iml
-**/avro/generated
-venv
-.envrc
 .vscode
+*.iml
 .DS_Store
-*.egg-info
-*.pytest_cache
-pytestdebug.log
-.coverage
+.envrc
 
-# Terraform
-**/.terraform/
-**/*.tfstate*
-**/tfplan.out
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+dist/
+build/
+*.egg-info
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+pytestdebug.log

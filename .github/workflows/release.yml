@@ -1,0 +1,121 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*.*.*' ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # hatch-vcs computes the version from the git tag
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Run tests
+        run: |
+          uv sync --locked
+          uv run --no-sync pytest -q
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Check that the package version matches the tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ ! -f "dist/asgarde-${VERSION}-py3-none-any.whl" ]; then
+            echo "::error::No wheel for version ${VERSION} (tag ${GITHUB_REF_NAME}): $(ls dist)"
+            exit 1
+          fi
+          uvx twine check --strict dist/*
+
+      - name: Upload the distribution
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    # Trusted Publishing: PyPI verifies this workflow via OIDC, no API token.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/asgarde/${{ github.ref_name }}
+    permissions:
+      id-token: write
+    steps:
+      - name: Download the distribution
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.14.2
+
+  github-release:
+    name: Create GitHub Release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download the distribution
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Get previous tag
+        id: previous_tag
+        run: |
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          echo "tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+          echo "Previous tag: $PREVIOUS_TAG"
+
+      - name: Generate commit list
+        id: commits
+        run: |
+          if [ -z "${{ steps.previous_tag.outputs.tag }}" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (\`%h\`) - @%an" HEAD)
+          else
+            COMMITS=$(git log --pretty=format:"- %s (\`%h\`) - @%an" ${{ steps.previous_tag.outputs.tag }}..HEAD)
+          fi
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true
+          append_body: true
+          body: |
+
+            ---
+
+            ## 📝 All Commits
+
+            ${{ steps.commits.outputs.commits }}
+
+            ---
+
+            **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ steps.previous_tag.outputs.tag }}...${{ github.ref_name }}

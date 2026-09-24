@@ -1,5 +1,4 @@
 import json
-from typing import List, Dict
 
 
 def log_element(elem):
@@ -13,7 +12,7 @@ def remove_technical_field(elem):
 
 
 def load_file_as_string(file_path: str):
-    elements: List[Dict] = load_file_as_dict(file_path)
+    elements: list[dict] = load_file_as_dict(file_path)
 
     return list(map(lambda el: json.dumps(el), elements))
 
