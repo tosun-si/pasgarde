@@ -363,6 +363,9 @@ counters = result.metrics().query(MetricsFilter().with_namespace(FAILURES_METRIC
 
 Ideas for the next versions, feedback and contributions are welcome (see [Contributing](#contributing)):
 
+- **Origin input element in the failures** (opt-in): a failure in the 3rd step also gives the element that entered
+  the flow, to debug and replay from the start. Light by design: the origin is only converted to a string when a
+  failure occurs, and it can be reduced to an identifier (message id, Kafka offset, business key).
 - **Any Beam transform in the composer**: plug a custom `DoFn` or `PTransform` using the Beam native error
   handling (`with_exception_handling`), its failures converted to `Failure` objects.
 - **Replayable input element**: pluggable element serializer (JSON, bytes...) instead of `str`, to replay the
