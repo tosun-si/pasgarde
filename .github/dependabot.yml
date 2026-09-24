@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [ dependencies, ci ]
+    groups:
+      github-actions:
+        patterns: [ '*' ]
+
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [ dependencies ]
+    ignore:
+      # apache-beam is a floor (minimum supported version), bumped deliberately.
+      # Compatibility with the latest Beam is covered by the CI matrix, not by Dependabot.
+      - dependency-name: apache-beam
+    groups:
+      dev-dependencies:
+        dependency-type: development
