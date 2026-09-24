@@ -7,7 +7,15 @@ import apache_beam as beam
 from apache_beam import ParDo, PCollection
 
 from asgarde.failure import Failure
-from asgarde.transforms.do_fns_error_handling import FAILURES, ErrorHandlingDoFn, Filter, FlatMap, Map, no_action
+from asgarde.transforms.do_fns_error_handling import (
+    FAILURES,
+    ErrorHandlingDoFn,
+    Filter,
+    FlatMap,
+    Map,
+    dead_letter_to_failure,
+    no_action,
+)
 
 FAILURES_STEP_NAME = 'Get all failures'
 REMOVE_ORIGIN_STEP_NAME = 'Remove origin'
@@ -143,6 +151,26 @@ class CollectionComposer:
             input_element_predicate=input_element_predicate,
             origin_to_string=self._origin_to_string
         ), *args, **kwargs)
+
+    def apply(self, name: str, transform: beam.ParDo | beam.DoFn, *args, **kwargs) -> CollectionComposer:
+        """
+        Applies any Beam `ParDo` (`beam.Map`, `beam.FlatMap`, `beam.ParDo(MyDoFn())`...) or `DoFn` with the Beam native
+        exception handling (`with_exception_handling`): its errors become `Failure` objects, gathered with the
+        failures of the other steps. `args` and `kwargs` are passed to a `DoFn` (e.g. side inputs).
+
+        Not available when the origin element is tracked: the transform would receive the `(origin, value)` pairs.
+        """
+        if self._origin_to_string is not None:
+            raise ValueError(
+                f'The step "{name}" can\'t be applied with apply() while the origin element is tracked '
+                f'(with_origin_element): use map, flat_map or filter, or apply it before with_origin_element.'
+            )
+
+        par_do = transform if isinstance(transform, beam.ParDo) else beam.ParDo(transform, *args, **kwargs)
+        current_outputs, dead_letters = self._collection | name >> par_do.with_exception_handling()
+        current_failures = dead_letters | f'{name} - to failures' >> beam.Map(dead_letter_to_failure, name)
+
+        return CollectionComposer(current_outputs, (*self._step_failures, current_failures), name)
 
     def _apply(self, name: str, do_fn: ErrorHandlingDoFn, *args, **kwargs) -> CollectionComposer:
         current_outputs, current_failures = (self._step_input(name)
