@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass
 
 import apache_beam as beam
@@ -125,18 +126,33 @@ def run_after_tests_finish_bundle_action(capsys):
     assert capsys.readouterr().out == f"{FINISH_BUNDLE_ACTION_MESSAGE}\n"
 
 
+def wait_for_output(capsys, expected_message: str, timeout_seconds: float = 10) -> str:
+    """
+    The DoFn teardown is called asynchronously by the runner, possibly after the end of the pipeline: waits for the
+    expected message instead of reading the output only once.
+    """
+    output = ''
+    deadline = time.monotonic() + timeout_seconds
+
+    while True:
+        output += capsys.readouterr().out
+        if expected_message in output or time.monotonic() > deadline:
+            return output
+        time.sleep(0.1)
+
+
 @pytest.fixture
 def run_after_tests_teardown_action(capsys):
     yield
 
-    assert capsys.readouterr().out == f"{TEARDOWN_ACTION_MESSAGE}\n"
+    assert wait_for_output(capsys, TEARDOWN_ACTION_MESSAGE) == f"{TEARDOWN_ACTION_MESSAGE}\n"
 
 
 @pytest.fixture
 def run_after_tests_all_actions(capsys):
     yield
 
-    capture_out = capsys.readouterr().out
+    capture_out = wait_for_output(capsys, TEARDOWN_ACTION_MESSAGE)
     assert SETUP_ACTION_MESSAGE in capture_out
     assert START_BUNDLE_ACTION_MESSAGE in capture_out
     assert FINISH_BUNDLE_ACTION_MESSAGE in capture_out

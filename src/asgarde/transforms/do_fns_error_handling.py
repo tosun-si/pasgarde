@@ -33,7 +33,10 @@ def origin_as_string(origin_to_string: Callable[[Any], Any], origin: Any) -> str
         return f'<conversion of the origin element failed: {err!r}>'
 
 
-def dead_letter_to_failure(dead_letter: tuple[Any, tuple[type, str, list[str]]], pipeline_step: str) -> Failure:
+def dead_letter_to_failure(dead_letter: tuple[Any, tuple[type, str, list[str]]],
+                           pipeline_step: str,
+                           input_element_to_string: Callable[[Any], str] | None = None,
+                           input_coder: Any = None) -> Failure:
     """
     Converts a dead letter of the Beam `with_exception_handling`, `(element, (exception type, exception repr, stack
     trace lines))`, to a `Failure`, and increments the failure counter of the step.
@@ -48,13 +51,15 @@ def dead_letter_to_failure(dead_letter: tuple[Any, tuple[type, str, list[str]]],
 
     Metrics.counter(FAILURES_METRICS_NAMESPACE, pipeline_step).inc()
 
-    return Failure(
+    failure = Failure(
         pipeline_step=pipeline_step,
-        input_element=element_as_string(element),
+        input_element=element_as_string(element, input_element_to_string),
         exception=SerializableException(type_name, message),
         stack_trace=''.join(stack_trace_lines),
         timestamp=datetime.now(timezone.utc)
     )
+
+    return failure.with_encoded_input_element(element, input_coder) if input_coder is not None else failure
 
 
 class ErrorHandlingDoFn(beam.DoFn):
@@ -66,6 +71,9 @@ class ErrorHandlingDoFn(beam.DoFn):
 
     With an `origin_to_string` function, the elements are `(origin, value)` pairs: the function is applied on the
     value, the origin is kept with the outputs and converted to a string **only when a failure occurs**.
+
+    `input_element_to_string` converts the input element in the failures (default conversion if `None`), and the
+    `input_coder` / `origin_coder` encode the input and origin elements in the failures (not encoded if `None`).
     """
 
     def __init__(self,
@@ -74,7 +82,10 @@ class ErrorHandlingDoFn(beam.DoFn):
                  start_bundle_action: Callable[[], None] = no_action,
                  finish_bundle_action: Callable[[], None] = no_action,
                  teardown_action: Callable[[], None] = no_action,
-                 origin_to_string: Callable[[Any], Any] | None = None):
+                 origin_to_string: Callable[[Any], Any] | None = None,
+                 input_element_to_string: Callable[[Any], str] | None = None,
+                 input_coder: Any = None,
+                 origin_coder: Any = None):
         super().__init__()
         self.step = step
         self.setup_action = setup_action
@@ -82,6 +93,9 @@ class ErrorHandlingDoFn(beam.DoFn):
         self.finish_bundle_action = finish_bundle_action
         self.teardown_action = teardown_action
         self.origin_to_string = origin_to_string
+        self.input_element_to_string = input_element_to_string
+        self.input_coder = input_coder
+        self.origin_coder = origin_coder
         self.failures_counter = Metrics.counter(FAILURES_METRICS_NAMESPACE, step)
 
     def setup(self):
@@ -109,10 +123,16 @@ class ErrorHandlingDoFn(beam.DoFn):
             raise err
 
         self.failures_counter.inc()
-        failure = Failure.from_exception(self.step, element, err)
+        failure = Failure.from_exception(self.step, element, err, self.input_element_to_string)
+
+        if self.input_coder is not None:
+            failure = failure.with_encoded_input_element(element, self.input_coder)
 
         if self.origin_to_string is not None:
             failure = failure.with_origin_element(origin_as_string(self.origin_to_string, origin))
+
+            if self.origin_coder is not None:
+                failure = failure.with_encoded_origin_element(origin, self.origin_coder)
 
         return pvalue.TaggedOutput(FAILURES, failure)
 
