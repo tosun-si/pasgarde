@@ -57,6 +57,9 @@ uv add asgarde      # or: pip install asgarde
   a failure occurs.
 - **[Never breaks your job](https://tosun-si.github.io/asgarde/concepts/guarantees/)**: non picklable exceptions,
   non JSON dicts, partial `flat_map` outputs, deterministic labels for Dataflow updates.
+- **[Input element format and encoded elements](https://tosun-si.github.io/asgarde/concepts/failure/)**: choose the
+  string format of the input element (`with_input_element_to_string`), and optionally keep the elements encoded with
+  their coder (`with_encoded_elements`), to replay them exactly.
 - **Any Beam transform**: `apply(name, beam.Map(...))` or a custom `DoFn`, with the Beam native exception handling,
   its errors gathered with the other failures.
 - **[Write the failures](https://tosun-si.github.io/asgarde/concepts/write-failures/)** to BigQuery with

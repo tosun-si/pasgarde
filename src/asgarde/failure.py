@@ -1,7 +1,9 @@
+import base64
 import dataclasses
 import json
 import pickle
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -17,6 +19,20 @@ FAILURE_BIGQUERY_SCHEMA = {
         {'name': 'exception_message', 'type': 'STRING', 'mode': 'NULLABLE'},
         {'name': 'stack_trace', 'type': 'STRING', 'mode': 'REQUIRED'},
         {'name': 'timestamp', 'type': 'TIMESTAMP', 'mode': 'NULLABLE'},
+    ]
+}
+
+# BigQuery table schema of the failures converted with `Failure.to_dict_with_encoded_elements`: the
+# `FAILURE_BIGQUERY_SCHEMA` and the encoded elements with their coders, same fields as the Java
+# `FailureTransforms.SCHEMA_WITH_ENCODED_ELEMENTS`. A separate schema: the tables created with the
+# `FAILURE_BIGQUERY_SCHEMA` keep working.
+FAILURE_BIGQUERY_SCHEMA_WITH_ENCODED_ELEMENTS = {
+    'fields': [
+        *FAILURE_BIGQUERY_SCHEMA['fields'],
+        {'name': 'input_element_bytes', 'type': 'BYTES', 'mode': 'NULLABLE'},
+        {'name': 'input_element_coder', 'type': 'STRING', 'mode': 'NULLABLE'},
+        {'name': 'origin_element_bytes', 'type': 'BYTES', 'mode': 'NULLABLE'},
+        {'name': 'origin_element_coder', 'type': 'STRING', 'mode': 'NULLABLE'},
     ]
 }
 
@@ -39,6 +55,11 @@ class Failure:
     # Default values also used when unpickling a failure of a previous version, without these fields.
     origin_element: str | None = None
     timestamp: datetime | None = None
+    # Elements encoded with their coder (see `CollectionComposer.with_encoded_elements`), None if not encoded.
+    input_element_bytes: bytes | None = None
+    input_element_coder: str | None = None
+    origin_element_bytes: bytes | None = None
+    origin_element_coder: str | None = None
 
     @property
     def exception_type(self) -> str:
@@ -67,6 +88,40 @@ class Failure:
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,
         }
 
+    def to_dict_with_encoded_elements(self) -> dict[str, Any]:
+        """
+        `to_dict` with the encoded elements and their coders, for `FAILURE_BIGQUERY_SCHEMA_WITH_ENCODED_ELEMENTS`.
+        The bytes are base64 encoded, the format of the BigQuery `BYTES` columns in `WriteToBigQuery`.
+        """
+        return {
+            **self.to_dict(),
+            'input_element_bytes': as_base64(self.input_element_bytes),
+            'input_element_coder': self.input_element_coder,
+            'origin_element_bytes': as_base64(self.origin_element_bytes),
+            'origin_element_coder': self.origin_element_coder,
+        }
+
+    def with_encoded_input_element(self, element: Any, coder: Any) -> 'Failure':
+        """
+        Returns a copy of this failure with the input element encoded with the given Beam coder, e.g. the coder of the
+        PCollection consumed by the failing step, to replay the element exactly.
+
+        Never raises: if the element can't be encoded, this failure is returned unchanged.
+        """
+        encoded = encode(element, coder)
+        if encoded is None:
+            return self
+
+        return dataclasses.replace(self, input_element_bytes=encoded, input_element_coder=str(coder))
+
+    def with_encoded_origin_element(self, origin: Any, coder: Any) -> 'Failure':
+        """Returns a copy of this failure with the origin element encoded with the given Beam coder."""
+        encoded = encode(origin, coder)
+        if encoded is None:
+            return self
+
+        return dataclasses.replace(self, origin_element_bytes=encoded, origin_element_coder=str(coder))
+
     def to_bad_record(self) -> tuple[Any, tuple[type, str, list[str]]]:
         """
         The failure in the dead letter format of the Beam `with_exception_handling`:
@@ -84,14 +139,21 @@ class Failure:
         return dataclasses.replace(self, origin_element=origin_element)
 
     @classmethod
-    def from_exception(cls, pipeline_step: str, element: Any, exception: Exception) -> 'Failure':
+    def from_exception(cls,
+                       pipeline_step: str,
+                       element: Any,
+                       exception: Exception,
+                       element_to_string: Callable[[Any], str] | None = None) -> 'Failure':
         """
         Builds a failure that can't break the pipeline: the element conversion never raises and a non picklable
         exception is replaced by a `SerializableException` keeping its type and message.
+
+        `element_to_string` converts the input element to a string, instead of the default conversion (JSON for a dict,
+        `str` otherwise). If it raises or returns `None`, the default conversion is used.
         """
         return cls(
             pipeline_step=pipeline_step,
-            input_element=element_as_string(element),
+            input_element=element_as_string(element, element_to_string),
             exception=SerializableException.of(exception),
             stack_trace=''.join(traceback.format_exception(type(exception), exception, exception.__traceback__)),
             timestamp=datetime.now(timezone.utc)
@@ -135,12 +197,21 @@ def qualified_name(exception_type: type) -> str:
     return f'{exception_type.__module__}.{exception_type.__qualname__}'
 
 
-def element_as_string(element: Any) -> str:
+def element_as_string(element: Any, element_to_string: Callable[[Any], str] | None = None) -> str:
     """
-    Converts the input element for the Failure object, a dict is converted to a JSON string.
+    Converts the input element for the Failure object: with the given function, otherwise a dict is converted to a JSON
+    string and any other element with `str`.
 
-    Never raises: the error handling must not break the pipeline (e.g. a dict with non JSON types).
+    Never raises: the error handling must not break the pipeline (e.g. a failing function, a dict with non JSON types).
     """
+    if element_to_string is not None:
+        try:
+            result = element_to_string(element)
+            if result is not None:
+                return str(result)
+        except Exception:
+            pass
+
     try:
         return json.dumps(element, default=str) if isinstance(element, dict) else str(element)
     except Exception as err:
@@ -148,3 +219,18 @@ def element_as_string(element: Any) -> str:
             return repr(element)
         except Exception:
             return f'<conversion of {type(element).__qualname__} failed: {err!r}>'
+
+
+def encode(element: Any, coder: Any) -> bytes | None:
+    """Encodes the element with the given Beam coder. Never raises: returns None if the element can't be encoded."""
+    if coder is None:
+        return None
+
+    try:
+        return coder.encode(element)
+    except Exception:
+        return None
+
+
+def as_base64(value: bytes | None) -> str | None:
+    return base64.b64encode(value).decode('ascii') if value is not None else None
