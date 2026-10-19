@@ -105,65 +105,33 @@ class FilterFranceTeams(DoFn):
             yield pvalue.TaggedOutput(FAILURES, failure)
 
 
-@pytest.fixture
-def run_after_tests_setup_action(capsys):
-    yield
-
-    assert capsys.readouterr().out == f"{SETUP_ACTION_MESSAGE}\n"
+EXECUTED_ACTIONS: list[str] = []
 
 
-@pytest.fixture
-def run_after_tests_start_bundle_action(capsys):
-    yield
-
-    assert capsys.readouterr().out == f"{START_BUNDLE_ACTION_MESSAGE}\n"
-
-
-@pytest.fixture
-def run_after_tests_finish_bundle_action(capsys):
-    yield
-
-    assert capsys.readouterr().out == f"{FINISH_BUNDLE_ACTION_MESSAGE}\n"
-
-
-def wait_for_output(capsys, expected_message: str, timeout_seconds: float = 10) -> str:
+def record_action(action: str) -> None:
     """
-    The DoFn teardown is called asynchronously by the runner, possibly after the end of the pipeline: waits for the
-    expected message instead of reading the output only once.
+    Records a DoFn lifecycle action. A list instead of the captured stdout: the teardown is called asynchronously by
+    the runner, and a print between two phases of pytest isn't captured by capsys, which made the tests flaky.
     """
-    output = ''
+    EXECUTED_ACTIONS.append(action)
+
+
+def wait_for_action(action: str, timeout_seconds: float = 30) -> list[str]:
+    """
+    Waits for the action, the DoFn teardown being called asynchronously, possibly after the end of the pipeline.
+    """
     deadline = time.monotonic() + timeout_seconds
-
-    while True:
-        output += capsys.readouterr().out
-        if expected_message in output or time.monotonic() > deadline:
-            return output
+    while action not in EXECUTED_ACTIONS and time.monotonic() < deadline:
         time.sleep(0.1)
 
-
-@pytest.fixture
-def run_after_tests_teardown_action(capsys):
-    yield
-
-    assert wait_for_output(capsys, TEARDOWN_ACTION_MESSAGE) == f"{TEARDOWN_ACTION_MESSAGE}\n"
+    return list(EXECUTED_ACTIONS)
 
 
 @pytest.fixture
-def run_after_tests_all_actions(capsys):
-    yield
-
-    capture_out = wait_for_output(capsys, TEARDOWN_ACTION_MESSAGE)
-    assert SETUP_ACTION_MESSAGE in capture_out
-    assert START_BUNDLE_ACTION_MESSAGE in capture_out
-    assert FINISH_BUNDLE_ACTION_MESSAGE in capture_out
-    assert TEARDOWN_ACTION_MESSAGE in capture_out
-
-
-@pytest.fixture
-def run_after_tests_no_action(capsys):
-    yield
-
-    assert capsys.readouterr().out == ''
+def executed_actions():
+    EXECUTED_ACTIONS.clear()
+    yield EXECUTED_ACTIONS
+    EXECUTED_ACTIONS.clear()
 
 
 class TestCollectionComposer:
@@ -462,77 +430,62 @@ class TestCollectionComposer:
 
     def test_when_call_dofn_lifecycle_setup_action_with_error_handling_then_expected_action_is_executed(
             self,
-            run_after_tests_setup_action):
+            executed_actions):
         with TestPipeline() as p:
-            self.execute_lifecyle_action_test(p, SETUP_ACTION_MESSAGE)
+            self.execute_lifecyle_action_test(p, setup_action=lambda: record_action(SETUP_ACTION_MESSAGE))
+
+        assert executed_actions == [SETUP_ACTION_MESSAGE]
 
     def test_when_call_dofn_lifecycle_start_bundle_action_with_error_handling_then_expected_action_is_executed(
             self,
-            run_after_tests_start_bundle_action):
+            executed_actions):
         with TestPipeline() as p:
-            self.execute_lifecyle_action_test(p, START_BUNDLE_ACTION_MESSAGE)
+            self.execute_lifecyle_action_test(p, start_bundle_action=lambda: record_action(START_BUNDLE_ACTION_MESSAGE))
+
+        assert set(executed_actions) == {START_BUNDLE_ACTION_MESSAGE}
 
     def test_when_call_dofn_lifecycle_finish_bundle_action_with_error_handling_then_expected_action_is_executed(
             self,
-            run_after_tests_finish_bundle_action):
+            executed_actions):
         with TestPipeline() as p:
-            self.execute_lifecyle_action_test(p, FINISH_BUNDLE_ACTION_MESSAGE)
+            self.execute_lifecyle_action_test(p, finish_bundle_action=lambda: record_action(FINISH_BUNDLE_ACTION_MESSAGE))
+
+        assert set(executed_actions) == {FINISH_BUNDLE_ACTION_MESSAGE}
 
     def test_when_call_dofn_lifecycle_teardown_action_with_error_handling_then_expected_action_is_executed(
             self,
-            run_after_tests_teardown_action):
+            executed_actions):
         with TestPipeline() as p:
-            self.execute_lifecyle_action_test(p, TEARDOWN_ACTION_MESSAGE)
+            self.execute_lifecyle_action_test(p, teardown_action=lambda: record_action(TEARDOWN_ACTION_MESSAGE))
+
+        assert wait_for_action(TEARDOWN_ACTION_MESSAGE) == [TEARDOWN_ACTION_MESSAGE]
 
     def test_when_call_dofn_lifecycle_all_actions_with_error_handling_then_expected_all_actions_are_executed(
             self,
-            run_after_tests_all_actions):
+            executed_actions):
         with TestPipeline() as p:
-            # Given.
-            teams = [
-                'PSG',
-                'OL',
-                'Real',
-                'ManU'
-            ]
+            self.execute_lifecyle_action_test(
+                p,
+                setup_action=lambda: record_action(SETUP_ACTION_MESSAGE),
+                start_bundle_action=lambda: record_action(START_BUNDLE_ACTION_MESSAGE),
+                finish_bundle_action=lambda: record_action(FINISH_BUNDLE_ACTION_MESSAGE),
+                teardown_action=lambda: record_action(TEARDOWN_ACTION_MESSAGE))
 
-            input_teams: PCollection[str] = p | 'Read' >> beam.Create(teams)
-            countries_side_inputs = p | 'Countries' >> beam.Create(team_countries)
-
-            # When.
-            (CollectionComposer.of(input_teams)
-             .map('Map with country',
-                  input_element_mapper=self.to_team_with_city,
-                  setup_action=lambda: print(SETUP_ACTION_MESSAGE),
-                  start_bundle_action=lambda: print(START_BUNDLE_ACTION_MESSAGE),
-                  finish_bundle_action=lambda: print(FINISH_BUNDLE_ACTION_MESSAGE),
-                  teardown_action=lambda: print(TEARDOWN_ACTION_MESSAGE),
-                  team_countries=AsDict(countries_side_inputs))
-             )
+        actions = wait_for_action(TEARDOWN_ACTION_MESSAGE)
+        assert set(actions) == {
+            SETUP_ACTION_MESSAGE, START_BUNDLE_ACTION_MESSAGE, FINISH_BUNDLE_ACTION_MESSAGE, TEARDOWN_ACTION_MESSAGE}
+        assert actions[0] == SETUP_ACTION_MESSAGE
+        assert actions[-1] == TEARDOWN_ACTION_MESSAGE
 
     def test_when_call_dofn_lifecycle_no_action_with_error_handling_then_no_action_executed(
             self,
-            run_after_tests_no_action):
+            executed_actions):
         with TestPipeline() as p:
-            # Given.
-            teams = [
-                'PSG',
-                'OL',
-                'Real',
-                'ManU'
-            ]
+            self.execute_lifecyle_action_test(p)
 
-            input_teams: PCollection[str] = p | 'Read' >> beam.Create(teams)
-            countries_side_inputs = p | 'Countries' >> beam.Create(team_countries)
+        assert executed_actions == []
 
-            # When.
-            (CollectionComposer.of(input_teams)
-             .map('Map with country',
-                  input_element_mapper=self.to_team_with_city,
-                  team_countries=AsDict(countries_side_inputs))
-             )
-
-    def execute_lifecyle_action_test(self, p, expected_action_message: str):
+    def execute_lifecyle_action_test(self, p, **lifecycle_actions):
         # Given.
         teams = [
             'PSG',
@@ -548,8 +501,8 @@ class TestCollectionComposer:
         (CollectionComposer.of(input_teams)
          .map('Map with country',
               input_element_mapper=self.to_team_with_city,
-              setup_action=lambda: print(expected_action_message),
-              team_countries=AsDict(countries_side_inputs))
+              team_countries=AsDict(countries_side_inputs),
+              **lifecycle_actions)
          )
 
     def to_team_with_city(self, team_name: str, team_countries: dict[str, str]) -> TeamInfo:
